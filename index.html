@@ -4,20 +4,82 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Mapa mundi</title>
-  <meta name="description" content="Un globo terr&aacute;queo fotorrealista, hecho con HTML y CSS, que se gira libremente arrastrando con el cursor.">
+  <meta name="description" content="Un globo terr&aacute;queo fotorrealista, hecho con HTML y CSS: g&iacute;ralo arrastrando, busca cualquier lugar, sigue el recorrido guiado o mira d&oacute;nde es de d&iacute;a en este momento.">
+  <meta name="theme-color" content="#e9ebef" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#070a10" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+  <!-- Vista previa al compartir el enlace. Las redes solo aceptan rutas absolutas. -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Mapa mundi">
+  <meta property="og:description" content="Un globo terr&aacute;queo fotorrealista hecho con HTML y CSS: g&iacute;ralo, busca lugares, sigue el recorrido guiado o mira d&oacute;nde es de d&iacute;a ahora mismo.">
+  <meta property="og:url" content="https://anthonycz6.github.io/Presentacion/">
+  <meta property="og:image" content="https://anthonycz6.github.io/Presentacion/vista-previa.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Globo terr&aacute;queo con &Aacute;frica y Europa a la luz del d&iacute;a sobre un fondo oscuro.">
+  <meta name="twitter:card" content="summary_large_image">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spline+Sans+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="styles.css">
+  <script>
+    /* La superficie se oculta hasta que sus 334 texturas esten decodificadas,
+       para que no aparezca a parches. globo.js quita la clase; el plazo es por
+       si ese script no llegara a cargar. */
+    document.documentElement.classList.add("cargando");
+    setTimeout(() => document.documentElement.classList.remove("cargando"), 8000);
+  </script>
 </head>
 <body>
 
-  <p class="rotulo">Mapa mundi &middot; eje a 23,44&deg; &middot; malla de 334 teselas</p>
+  <header class="barra">
+    <h1 class="rotulo">Mapa mundi &middot; eje a 23,44&deg;<span class="rotulo-malla"> &middot; malla de 334 teselas</span></h1>
+
+    <div class="controles">
+      <form class="buscador" id="buscador" role="search" autocomplete="off">
+        <label class="oculto" for="buscar">Buscar un lugar</label>
+        <input id="buscar" type="search" list="lugares" placeholder="Busca un lugar"
+               title="Ciudad, país o coordenadas como 19.4, -99.1"
+               enterkeyhint="go" spellcheck="false">
+        <datalist id="lugares"></datalist>
+        <button class="ir" type="submit" aria-label="Ir al lugar">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+        <p class="aviso" id="aviso" role="status"></p>
+      </form>
+
+      <nav class="herramientas" aria-label="Controles del globo">
+        <button class="boton" type="button" id="b-recorrido" aria-pressed="false"
+                title="Recorrido guiado por ocho lugares del planeta">Recorrido</button>
+        <button class="boton" type="button" id="b-ahora" aria-pressed="false"
+                title="Ilumina el globo como est&aacute; ahora mismo">Ahora</button>
+        <button class="boton icono" type="button" id="b-giro" aria-pressed="true"
+                aria-label="Giro autom&aacute;tico" title="Giro autom&aacute;tico">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>
+        </button>
+        <button class="boton icono" type="button" id="b-marcas" aria-pressed="true"
+                aria-label="Marcadores" title="Marcadores">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>
+        </button>
+        <button class="boton icono" type="button" id="b-inicio"
+                aria-label="Volver a la vista inicial" title="Volver a la vista inicial (Inicio)">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 11l8-7 8 7"/><path d="M6.5 9.5V20h11V9.5"/></svg>
+        </button>
+        <button class="boton icono" type="button" id="b-pantalla" aria-pressed="false"
+                aria-label="Pantalla completa" title="Pantalla completa (F)">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        </button>
+      </nav>
+    </div>
+  </header>
 
   <main class="escena">
 
     <div class="sistema" tabindex="0" role="img"
-         aria-label="Globo terr&aacute;queo. Arrastra para girarlo en cualquier direcci&oacute;n, o usa las flechas del teclado.">
+         aria-label="Globo terr&aacute;queo. Arrastra para girarlo en cualquier direcci&oacute;n, usa la rueda o pellizca para acercarlo y haz doble clic para volver a la vista inicial. Con el teclado: flechas para girar, m&aacute;s y menos para acercar, Inicio para volver.">
       <div class="piso"></div>
 
       <div class="globo">
@@ -374,6 +436,9 @@
       <div class="canto"></div>
       <div class="atmosfera"></div>
       <div class="aureola"></div>
+
+      <!-- Marcadores: etiquetas planas que globo.js coloca sobre la esfera. -->
+      <div class="marcas"></div>
     </div>
 
     <p class="medidor">
@@ -385,156 +450,30 @@
 
   </main>
 
-  <p class="hint">Arrastra el globo para girarlo</p>
+  <section class="tarjeta" id="tarjeta" aria-labelledby="t-titulo" hidden>
+    <button class="boton icono cerrar" type="button" id="t-cerrar" aria-label="Cerrar">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <p class="tarjeta-etiqueta" id="t-etiqueta"></p>
+    <h2 class="tarjeta-titulo" id="t-titulo"></h2>
+    <p class="tarjeta-texto" id="t-texto"></p>
+    <p class="tarjeta-coords" id="t-coords"></p>
+    <div class="tarjeta-pasos" id="t-pasos" hidden>
+      <button class="boton" type="button" id="t-anterior">Anterior</button>
+      <span class="tarjeta-progreso" id="t-progreso" aria-hidden="true"></span>
+      <button class="boton primario" type="button" id="t-siguiente">Siguiente</button>
+    </div>
+  </section>
 
-  <script>
-    /* Control por arrastre, libre en los dos ejes.
+  <!-- Lo que muestra la tarjeta, dicho en voz alta para los lectores de pantalla. -->
+  <p class="oculto" id="anuncio" aria-live="polite"></p>
 
-       El giro no cuelga del scroll, asi que la pagina no se desplaza: la
-       unica forma de mover el globo es agarrarlo. Eso obliga a JavaScript,
-       porque un arrastre no se puede leer desde CSS.
+  <p class="hint">
+    <span class="para-raton">Arrastra para girar &middot; rueda para acercar &middot; doble clic para volver</span>
+    <span class="para-dedo">Arrastra para girar &middot; pellizca para acercar &middot; doble toque para volver</span>
+  </p>
 
-       Las transformaciones se escriben DIRECTAMENTE en los cuatro elementos
-       que giran, no a traves de una propiedad personalizada heredada. Con una
-       variable heredada desde body, cambiarla obligaba al navegador a
-       recalcular estilo en las cientos de teselas aunque ninguna la usara.
-       Asi solo se tocan cuatro nodos por fotograma. */
-    (() => {
-      const sistema = document.querySelector(".sistema");
-      const ejes = [...document.querySelectorAll(".eje")];
-      const capas = [...document.querySelectorAll(".corteza, .luces")];
-      const salidaLon = document.getElementById("meridiano");
-      const salidaLat = document.getElementById("paralelo");
-
-      const INCLINACION_AXIAL = -23.44;   // la de la Tierra
-
-      /* Hasta los polos, y ahi se para. Con 90 grados ya se alcanza cualquier
-         punto de la esfera; pasar de ahi solo pondria el globo del reves.
-         Antes el tope era de 14 grados porque la construccion anterior, de
-         lonjas planas de polo a polo, se vaciaba al inclinarla. La malla de
-         teselas no tiene ese limite. */
-      const TOPE = 90;
-
-      const POR_PIXEL_X = 0.38;           // grados de giro por pixel
-      const POR_PIXEL_Y = 0.30;
-      const ROCE = 0.94;                  // frenado de la inercia
-
-      const suave = !matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-      let giro = 0;
-      let inclina = -8;
-      let velocidad = 0;
-      let arrastrando = false;
-      let ultimoX = 0;
-      let ultimoY = 0;
-      let pendiente = false;
-      let estrenado = false;
-
-      /* Longitud del meridiano que mira al frente. Una tesela de longitud L
-         acaba en L + giro, asi que da a camara cuando L = -giro. */
-      const normalizar = (a) => ((a % 360) + 540) % 360 - 180;
-
-      const formato = (v, positivo, negativo) =>
-        Math.abs(v).toFixed(1).replace(".", ",") + "\u00b0 " +
-        (v >= 0 ? positivo : negativo);
-
-      function pintar() {
-        pendiente = false;
-        const eje =
-          "rotateZ(" + INCLINACION_AXIAL + "deg) rotateX(" + inclina.toFixed(2) + "deg)";
-        for (const e of ejes) e.style.transform = eje;
-
-        const vuelta = "rotateY(" + giro.toFixed(2) + "deg)";
-        for (const c of capas) c.style.transform = vuelta;
-
-        salidaLon.textContent = formato(normalizar(-giro), "E", "O");
-        salidaLat.textContent = formato(-inclina, "N", "S");
-      }
-
-      function programar() {
-        if (pendiente) return;
-        pendiente = true;
-        requestAnimationFrame(pintar);
-      }
-
-      function estrenar() {
-        if (estrenado) return;
-        estrenado = true;
-        document.body.classList.add("tocado");
-      }
-
-      /* Inercia: el globo sigue girando y frena solo. Sin esto el arrastre se
-         siente pegajoso, como mover una imagen en vez de un objeto. */
-      function deslizar() {
-        if (arrastrando) return;
-        if (Math.abs(velocidad) < 0.02) { velocidad = 0; return; }
-        giro += velocidad;
-        velocidad *= ROCE;
-        programar();
-        requestAnimationFrame(deslizar);
-      }
-
-      sistema.addEventListener("pointerdown", (e) => {
-        arrastrando = true;
-        velocidad = 0;
-        ultimoX = e.clientX;
-        ultimoY = e.clientY;
-        sistema.setPointerCapture(e.pointerId);
-        sistema.classList.add("agarrado");
-        estrenar();
-      });
-
-      sistema.addEventListener("pointermove", (e) => {
-        if (!arrastrando) return;
-        const dx = e.clientX - ultimoX;
-        const dy = e.clientY - ultimoY;
-        ultimoX = e.clientX;
-        ultimoY = e.clientY;
-
-        giro += dx * POR_PIXEL_X;
-        velocidad = dx * POR_PIXEL_X;
-
-        /* Al tirar hacia abajo el frente del globo baja y asoma el polo
-           norte, que es lo que espera la mano. En rotateX eso es restar. */
-        inclina = Math.max(-TOPE, Math.min(TOPE, inclina - dy * POR_PIXEL_Y));
-        programar();
-      });
-
-      const soltar = (e) => {
-        if (!arrastrando) return;
-        arrastrando = false;
-        sistema.classList.remove("agarrado");
-        if (sistema.hasPointerCapture(e.pointerId)) {
-          sistema.releasePointerCapture(e.pointerId);
-        }
-        if (suave) requestAnimationFrame(deslizar);
-      };
-      sistema.addEventListener("pointerup", soltar);
-      sistema.addEventListener("pointercancel", soltar);
-
-      /* Flechas del teclado: el globo es ahora un control, no una imagen, y
-         tiene que poder manejarse sin raton. Misma convencion que el
-         arrastre, o sea agarrar el objeto y no mover la camara. */
-      sistema.addEventListener("keydown", (e) => {
-        const paso = e.shiftKey ? 15 : 5;
-        let usada = true;
-
-        if (e.key === "ArrowLeft") giro -= paso;
-        else if (e.key === "ArrowRight") giro += paso;
-        else if (e.key === "ArrowUp") inclina = Math.min(TOPE, inclina + paso);
-        else if (e.key === "ArrowDown") inclina = Math.max(-TOPE, inclina - paso);
-        else usada = false;
-
-        if (!usada) return;
-        e.preventDefault();
-        velocidad = 0;
-        estrenar();
-        programar();
-      });
-
-      pintar();
-    })();
-  </script>
+  <script src="globo.js"></script>
 
 </body>
 </html>
