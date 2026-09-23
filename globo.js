@@ -27,9 +27,10 @@
 
   /* ------------------------------------------------------------- datos --- */
 
-  /* Lugares del buscador. Los que llevan marca: true salen como marcadores,
-     elegidos para que sus etiquetas no se pisen. zoom es el acercamiento al
-     volar hasta ahi; los paises, que son grandes, se miran de mas lejos. */
+  /* Lugares con texto propio o con marcador. Los que llevan marca: true
+     salen como marcadores; zoom es el acercamiento al volar hasta ahi. Los
+     paises, estados y el resto de ciudades llegan despues desde
+     geografia.js, generado a partir de Natural Earth. */
   const LUGARES = [
     { nombre: "Ciudad de México", zona: "México", lat: 19.43, lon: -99.13, marca: true, zoom: 1.3,
       alias: ["cdmx", "df", "mexico df"],
@@ -135,32 +136,6 @@
 
     { nombre: "Polo Norte", zona: "Ártico", lat: 90, lon: 0, zoom: 1 },
     { nombre: "Polo Sur", zona: "Antártida", lat: -90, lon: 0, zoom: 1 },
-
-    { nombre: "México", zona: "País", lat: 23.63, lon: -102.55 },
-    { nombre: "Estados Unidos", zona: "País", lat: 39.83, lon: -98.58, alias: ["eeuu", "ee uu", "usa"] },
-    { nombre: "Canadá", zona: "País", lat: 56.13, lon: -106.35, zoom: 1 },
-    { nombre: "Guatemala", zona: "País", lat: 15.78, lon: -90.23 },
-    { nombre: "Cuba", zona: "País", lat: 21.52, lon: -77.78 },
-    { nombre: "Colombia", zona: "País", lat: 4.57, lon: -74.3 },
-    { nombre: "Venezuela", zona: "País", lat: 6.42, lon: -66.59 },
-    { nombre: "Perú", zona: "País", lat: -9.19, lon: -75.02 },
-    { nombre: "Brasil", zona: "País", lat: -14.24, lon: -51.93, zoom: 1 },
-    { nombre: "Argentina", zona: "País", lat: -38.42, lon: -63.62 },
-    { nombre: "Chile", zona: "País", lat: -35.68, lon: -71.54 },
-    { nombre: "España", zona: "País", lat: 40.46, lon: -3.75 },
-    { nombre: "Francia", zona: "País", lat: 46.23, lon: 2.21 },
-    { nombre: "Alemania", zona: "País", lat: 51.17, lon: 10.45 },
-    { nombre: "Italia", zona: "País", lat: 41.87, lon: 12.57 },
-    { nombre: "Reino Unido", zona: "País", lat: 55.38, lon: -3.44 },
-    { nombre: "Rusia", zona: "País", lat: 61.52, lon: 105.32, zoom: 1 },
-    { nombre: "China", zona: "País", lat: 35.86, lon: 104.2, zoom: 1 },
-    { nombre: "India", zona: "País", lat: 20.59, lon: 78.96 },
-    { nombre: "Japón", zona: "País", lat: 36.2, lon: 138.25 },
-    { nombre: "Australia", zona: "País", lat: -25.27, lon: 133.78, zoom: 1 },
-    { nombre: "Egipto", zona: "País", lat: 26.82, lon: 30.8 },
-    { nombre: "Nigeria", zona: "País", lat: 9.08, lon: 8.68 },
-    { nombre: "Sudáfrica", zona: "País", lat: -30.56, lon: 22.94 },
-    { nombre: "Kenia", zona: "País", lat: -0.02, lon: 37.91 },
   ];
 
   /* Vuelta al mundo de oeste a este, de la ciudad al hielo. */
@@ -183,12 +158,24 @@
   const ROCE = 0.94;                  // frenado de la inercia, por fotograma de 60 Hz
 
   /* Las texturas de la franja ecuatorial miden 68 px de alto y a zoom 1 su
-     tesela ocupa unos 48 en pantalla: a 1,5 ya se estiran casi al limite. */
+     tesela ocupa unos 48 en pantalla. A 3 ya van ampliadas al doble y se
+     ablandan; mas alla se ven borrosas y asoman las costuras entre teselas. */
   const ZOOM_MIN = 0.8;
-  const ZOOM_MAX = 1.5;
+  const ZOOM_MAX = 3;
+
+  /* Niveles de etiquetas: los paises se ven desde el principio, cada vez
+     mas al acercarse; las ciudades marcadas entran algo mas cerca, y de
+     cerca los paises dejan paso a sus estados. Cada entrada es un fundido
+     entre dos zooms. */
+  const CIUDADES_DESDE = [1.2, 1.35];
+  const ESTADOS_DESDE = [1.85, 2.1];
 
   const GIRO_AUTO = 0.005;            // grados por ms: una vuelta cada 72 s
-  const ESPERA_AUTO = 6000;           // ms sin tocar nada antes de volver a girar solo
+  const ESPERA_AUTO = 6000;           // ms quieto antes de girar solo
+  /* Con zoom se esta mirando algo de cerca: la inactividad espera mas antes
+     de alejar el globo y ponerlo a girar. */
+  const ESPERA_CERCA = 20000;
+  const PISTA_DE_NUEVO = 30000;       // ms quieto para volver a mostrar la pista
 
   const INICIO = { giro: 0, inclina: -8, zoom: 1 };
 
@@ -224,7 +211,7 @@
 
   const buscador = document.getElementById("buscador");
   const entrada = document.getElementById("buscar");
-  const opciones = document.getElementById("lugares");
+  const lista = document.getElementById("sugerencias");
   const aviso = document.getElementById("aviso");
   const anuncio = document.getElementById("anuncio");
 
@@ -281,14 +268,26 @@
     return 2 * Math.asin(Math.min(1, Math.sqrt(a))) / RAD;
   }
 
+  /* Solo se recuerda si se quieren ver las etiquetas. El giro automatico no:
+     un clic suelto en su boton lo dejaba apagado para siempre y la pagina
+     parecia no tener animacion de inactividad. */
   const preferencias = (() => {
     try { return JSON.parse(localStorage.getItem("mapa-mundi")) || {}; } catch { return {}; }
   })();
   function guardarPreferencias() {
     try {
-      localStorage.setItem("mapa-mundi", JSON.stringify({ autoGiro, verMarcas }));
+      localStorage.setItem("mapa-mundi", JSON.stringify({ verMarcas }));
     } catch { /* sin almacenamiento: se vuelve a lo de siempre en la proxima visita */ }
   }
+
+  /* 0 por debajo de a, 1 por encima de b y un fundido entre medias. */
+  const rampa = (v, [a, b]) => limitar((v - a) / (b - a), 0, 1);
+
+  const millones = (n) => (n / 1e6).toFixed(n < 1e7 ? 1 : 0).replace(".", ",").replace(/,0$/, "");
+  const habitantes = (n) =>
+    n >= 1e6 ? (millones(n) === "1" ? "1 millón" : millones(n) + " millones") + " de habitantes" :
+    n >= 1e4 ? Math.round(n / 1000) + " mil habitantes" :
+    n.toLocaleString("es") + " habitantes";
 
   /* -------------------------------------------------------------- estado --- */
 
@@ -308,7 +307,7 @@
   let encaje = 1;
   let encajeObjetivo = 1;
 
-  let autoGiro = preferencias.autoGiro ?? suave;
+  let autoGiro = suave;
   let verMarcas = preferencias.verMarcas ?? true;
 
   /* Que ocupa la tarjeta: null, "lugar", "recorrido" o "ahora". Mientras hay
@@ -406,9 +405,17 @@
         zoom = zoomObjetivo;
       }
 
+      /* Inactividad: el globo gira solo y, poco a poco, vuelve a su postura
+         de partida, sin zoom y con el ecuador cerca del centro. Pasado un
+         rato largo reaparece la pista, por si quien llega no sabe que hacer. */
       const ritmo = ritmoAutomatico(ahora);
       if (ritmo > 0) {
         giro += GIRO_AUTO * ritmo * ms;
+        const vuelta = (1 - 0.985 ** fotogramas) * ritmo;
+        inclina += (INICIO.inclina - inclina) * vuelta;
+        zoom += (INICIO.zoom - zoom) * vuelta;
+        zoomObjetivo = zoom;
+        if (ahora - ultimoToque > PISTA_DE_NUEVO) document.body.classList.remove("tocado");
         sigue = true;
       }
     }
@@ -429,10 +436,12 @@
      en rampa durante 1,5 s para que no parezca un tiron. */
   function ritmoAutomatico(ahora) {
     if (!autoGiro || modo || arrastrando || vuelo || Math.abs(velocidad) >= 0.02) return 0;
-    const quieto = ahora - ultimoToque - ESPERA_AUTO;
+    const quieto = ahora - ultimoToque - esperaInactividad();
     if (quieto <= 0) return 0;
     return Math.min(1, quieto / 1500);
   }
+
+  const esperaInactividad = () => (zoomObjetivo > 1.2 ? ESPERA_CERCA : ESPERA_AUTO);
 
   /* Cualquier interaccion para el giro automatico y lo deja programado para
      cuando todo vuelva a estar quieto. */
@@ -440,38 +449,76 @@
     ultimoToque = performance.now();
     document.body.classList.add("tocado");
     clearTimeout(relojAuto);
-    if (autoGiro) relojAuto = setTimeout(despertar, ESPERA_AUTO + 50);
+    if (autoGiro) relojAuto = setTimeout(despertar, esperaInactividad() + 50);
   }
 
   /* ---------------------------------------------------------- marcadores --- */
 
-  function crearMarca(clase, nombre) {
+  /* Tres clases de etiqueta sobre el globo: marcadores de ciudad (punto y
+     nombre), paises y estados (solo el nombre, centrado en su sitio). Todas
+     pasan por colocarMarcas, que las proyecta y evita que se pisen. */
+
+  const marcaDe = new WeakMap();      // elemento -> su marca, para los toques
+
+  function crearMarca(m, clase) {
     const el = document.createElement("div");
     el.className = "marca" + (clase ? " " + clase : "");
     el.innerHTML = '<span class="punto"></span><span class="nombre"></span>';
-    el.lastChild.textContent = nombre;
+    el.lastChild.textContent = m.nombre ?? "";
     el.style.visibility = "hidden";
     capaMarcas.append(el);
-    return el;
+    marcaDe.set(el, m);
+    m.el = el;
+    return m;
   }
 
   const marcas = LUGARES.filter((l) => l.marca)
-    .map((l) => ({ lugar: l, lat: l.lat, lon: l.lon, el: crearMarca("", l.nombre) }));
-  const destino = { lugar: null, lat: 0, lon: 0, el: crearMarca("destacada", "") };
-  const sol = { lat: 0, lon: 0, el: crearMarca("sol", "Sol en el cénit") };
+    .map((l) => crearMarca({ lugar: l, nombre: l.nombre, lat: l.lat, lon: l.lon }, ""));
+  const destino = crearMarca({ lugar: null, lat: 0, lon: 0 }, "destacada");
+  const sol = crearMarca({ nombre: "Sol en el cénit", lat: 0, lon: 0 }, "sol");
+
+  /* Paises y estados se llenan al llegar geografia.js. Son cientos, asi que
+     su elemento se crea la primera vez que hay que ensenarlos. */
+  const etiquetasPais = [];
+  const etiquetasEstado = [];
 
   /* Orden de prioridad cuando dos etiquetas chocan: gana la primera. El Sol
-     y el lugar elegido siempre; despues, el orden de LUGARES. */
-  const todasLasMarcas = [sol, destino, ...marcas];
+     y el lugar elegido siempre. Despues depende del nivel: de lejos mandan
+     los nombres de pais sobre las ciudades marcadas ("Colombia" antes que
+     "Bogotá"); de cerca, las ciudades sobre los estados. Cada grupo va de mas
+     a menos importante. */
+  let ordenLejos = [sol, destino, ...marcas];
+  let ordenCerca = ordenLejos;
 
-  /* El ancho de cada etiqueta se mide una vez y se guarda; hay que volver a
-     medir cuando carga la fuente, cambia el texto o cambia la ventana. */
-  const olvidarMedidas = () => { for (const m of todasLasMarcas) m.ancho = null; };
+  /* Ancho de las etiquetas. Las de ciudad se miden una vez y se guardan; las
+     de pais y estado, que son muchas, se calculan: la fuente es monoespaciada
+     y todas sus letras miden lo mismo, asi que basta medir una muestra por
+     clase. Todo hay que volver a medirlo al cargar la fuente o cambiar la
+     ventana. */
+  const letra = { pais: null, estado: null };
+
+  function medirLetras() {
+    for (const clase of Object.keys(letra)) {
+      const muestra = crearMarca({ nombre: "M".repeat(20) }, clase);
+      muestra.el.style.visibility = "hidden";
+      const ancho20 = muestra.el.lastChild.offsetWidth;
+      muestra.el.lastChild.textContent = "M".repeat(10);
+      const ancho10 = muestra.el.lastChild.offsetWidth;
+      letra[clase] = { ancho: (ancho20 - ancho10) / 10, relleno: ancho10 - (ancho20 - ancho10),
+                       alto: muestra.el.lastChild.offsetHeight };
+      muestra.el.remove();
+    }
+  }
+
+  function olvidarMedidas() {
+    for (const m of ordenCerca) m.ancho = null;
+    letra.pais = letra.estado = null;
+  }
   document.fonts?.ready.then(() => { olvidarMedidas(); pintar(); });
 
-  /* Los marcadores no viven en la malla 3D: son etiquetas planas que se
-     colocan encima proyectando su punto con la misma cadena de transformadas
-     que las teselas. Asi el texto queda siempre derecho y legible, en vez de
+  /* Las etiquetas no viven en la malla 3D: son planas y se colocan encima
+     proyectando su punto con la misma cadena de transformadas que las
+     teselas. Asi el texto queda siempre derecho y legible, en vez de
      inclinarse con el eje y aplastarse hacia el borde. */
   function colocarMarcas(k) {
     const R = tam / 2;
@@ -479,17 +526,42 @@
     const sb = Math.sin(inclina * RAD), cb = Math.cos(inclina * RAD);
     const sc = Math.sin(INCLINACION_AXIAL * RAD), cc = Math.cos(INCLINACION_AXIAL * RAD);
     const contraescala = " scale(" + (1 / k).toFixed(4) + ")";
-    const ocupado = [];               // cajas ya puestas, en px sin zoom
 
-    for (const m of todasLasMarcas) {
-      const activa =
-        m === sol ? modo === "ahora" :
-        m === destino ? destino.lugar !== null :
-        verMarcas && m.lugar !== destino.lugar;
+    /* Paso de pantalla a coordenadas del globo sin zoom, y vuelta. La barra,
+       el rotulo y el medidor cuentan como sitio ya ocupado, y lo que se
+       saldria de la ventana no se pone: con zoom el globo desborda la
+       pantalla y sus etiquetas quedarian cortadas en el borde. */
+    const ox = pantalla.cx + pantalla.dx - R * k, oy = pantalla.cy + pantalla.dy - R * k;
+    const aLocal = (r) => ({ x0: (r.left - ox) / k, x1: (r.right - ox) / k, y0: (r.top - oy) / k, y1: (r.bottom - oy) / k });
+    const ocupado = pantalla.reservado.map(aLocal);   // cajas ya puestas, en px sin zoom
+    const borde = aLocal({ left: 4, top: 4, right: innerWidth - 4, bottom: innerHeight - 4 });
+
+    /* Niveles por zoom. Los paises se ven siempre, pero no todos: cada uno
+       trae de Natural Earth el nivel de zoom de mapa web al que merece
+       etiqueta, y aqui se traduce el tamano del globo a ese nivel. Sin zoom
+       salen los grandes; al acercarse, los medianos y pequenos. Mas cerca
+       aun, los que tienen estados ceden su sitio a ellos. Un movil, con el
+       globo mas pequeno, muestra menos. */
+    const z = zoom;
+    const nivelWeb = Math.log2(Math.PI * tam * z / 256);
+    const verPaises = verMarcas ? 1 : 0;
+    const verCiudades = verMarcas ? rampa(z, CIUDADES_DESDE) : 0;
+    const verEstados = verMarcas ? rampa(z, ESTADOS_DESDE) : 0;
+    if ((verPaises || verEstados) && !letra.pais) medirLetras();
+
+    for (const m of verEstados > 0.5 ? ordenCerca : ordenLejos) {
+      let nivel;
+      if (m === sol) nivel = modo === "ahora" ? 1 : 0;
+      else if (m === destino) nivel = destino.lugar ? 1 : 0;
+      else if (m.lugar === destino.lugar) nivel = 0;
+      else if (m.clase === "pais") {
+        nivel = m.minimo <= nivelWeb + 0.7 ? verPaises * (m.tieneEstados ? 1 - verEstados : 1) : 0;
+      } else if (m.clase === "estado") nivel = verEstados;
+      else nivel = verCiudades;
 
       let opacidad = 0;
       let x = 0, y = 0;
-      if (activa) {
+      if (nivel > 0) {
         const fi = (giro + m.lon) * RAD;
         const la = m.lat * RAD;
         /* rotateY(giro + lon) rotateX(lat) aplicado al punto (0, 0, 1)... */
@@ -504,36 +576,47 @@
         /* Con la camara a 3 diametros, un punto de la esfera se ve cuando su
            normal cumple z > R / d = 1/6. Se desvanece al acercarse a ese
            borde para no aparecer ni desaparecer de golpe. */
-        opacidad = limitar((pz - 1 / 6) / 0.12, 0, 1);
+        opacidad = limitar((pz - 1 / 6) / 0.12, 0, 1) * nivel;
         const f = d / (d - R * pz);
         x = R + R * px * f;
         y = R + R * py * f;
       }
 
       if (opacidad > 0) {
-        /* La etiqueta va a la derecha del punto, salvo que se salga de la
-           atmosfera: entonces a la izquierda, para no cortarse en el borde
-           de la pantalla. Las medidas van en px sin zoom, porque la marca
-           esta contraescalada. */
-        if (m.ancho == null) {
-          m.ancho = m.el.lastChild.offsetWidth;
-          m.alto = m.el.lastChild.offsetHeight;
+        if (!m.el) crearMarca(m, m.clase);
+        let caja;
+        if (m.clase) {
+          /* Pais o estado: el nombre centrado en su punto. */
+          const l = letra[m.clase];
+          const w = (m.nombre.length * l.ancho + l.relleno) / k, h = l.alto / k;
+          caja = { x0: x - w / 2, x1: x + w / 2, y0: y - h / 2, y1: y + h / 2 };
+        } else {
+          /* Ciudad: el nombre a la derecha del punto, salvo que se salga de
+             la atmosfera; entonces a la izquierda, para no cortarse en el
+             borde de la pantalla. Las medidas van en px sin zoom, porque la
+             marca esta contraescalada. */
+          if (m.ancho == null) {
+            m.ancho = m.el.lastChild.offsetWidth;
+            m.alto = m.el.lastChild.offsetHeight;
+          }
+          const w = m.ancho / k, h = m.alto / k, r = 8 / k;
+          const izquierda = x + r + w > tam * 1.04;
+          if (izquierda !== m.izquierda) {
+            m.el.classList.toggle("izquierda", izquierda);
+            m.izquierda = izquierda;
+          }
+          caja = izquierda
+            ? { x0: x - r - w, x1: x + r, y0: y - h / 2, y1: y + h / 2 }
+            : { x0: x - r, x1: x + r + w, y0: y - h / 2, y1: y + h / 2 };
         }
-        const w = m.ancho / k, h = m.alto / k, r = 8 / k;
-        const izquierda = x + r + w > tam * 1.04;
-        if (izquierda !== m.izquierda) {
-          m.el.classList.toggle("izquierda", izquierda);
-          m.izquierda = izquierda;
-        }
-        /* Si choca con una etiqueta de mas prioridad, no se pone. Las que
-           se estan desvaneciendo en el borde no reservan sitio. */
-        const caja = izquierda
-          ? { x0: x - r - w, x1: x + r, y0: y - h / 2, y1: y + h / 2 }
-          : { x0: x - r, x1: x + r + w, y0: y - h / 2, y1: y + h / 2 };
-        const choca = ocupado.some((o) =>
+        /* Si choca con una etiqueta de mas prioridad, no se pone. Tambien
+           reservan sitio las que se estan desvaneciendo en el borde: si no,
+           dos vecinas medio transparentes se pintarian una sobre otra. */
+        const fuera = caja.x0 < borde.x0 || caja.x1 > borde.x1 || caja.y0 < borde.y0 || caja.y1 > borde.y1;
+        const choca = fuera || ocupado.some((o) =>
           caja.x0 < o.x1 && o.x0 < caja.x1 && caja.y0 < o.y1 && o.y0 < caja.y1);
         if (choca) opacidad = 0;
-        else if (opacidad > 0.5) ocupado.push(caja);
+        else ocupado.push(caja);
       }
 
       if (opacidad === 0) {
@@ -647,17 +730,20 @@
       const cx = escena.offsetLeft + sistema.offsetLeft + tam / 2;
       const cy = escena.offsetTop + sistema.offsetTop + tam / 2;
       /* Con la atmosfera, que sobresale un 8 % por lado, y con el zoom al
-         que se esta volando: los lugares se miran acercados. */
+         que se esta volando: los lugares se miran acercados. Si ese zoom es
+         alto, el globo no cabria de todas formas y encogerlo solo le quitaria
+         el acercamiento; basta con centrar el lugar en el hueco. */
       const ancho = tam * 1.16 * zoomObjetivo;
+      const encoger = zoomObjetivo <= 1.35;
       if (hojaInferior.matches) {
         const arriba = barra.getBoundingClientRect().bottom + 8;
         const abajo = caja.top - 8;
-        k = limitar((abajo - arriba) / ancho, 0.3, 1);
+        if (encoger) k = limitar((abajo - arriba) / ancho, 0.3, 1);
         dy = Math.min(0, (arriba + abajo) / 2 - cy);
       } else {
         const izquierda = caja.right + 12;
         const derecha = innerWidth - 12;
-        k = limitar((derecha - izquierda) / ancho, 0.3, 1);
+        if (encoger) k = limitar((derecha - izquierda) / ancho, 0.3, 1);
         dx = Math.max(0, (izquierda + derecha) / 2 - cx);
       }
     }
@@ -665,14 +751,39 @@
       ? "translate(" + dx.toFixed(1) + "px, " + dy.toFixed(1) + "px)"
       : "";
     encajeObjetivo = k;
+    medirPantalla(dx, dy);
     despertar();
+  }
+
+  /* Donde queda el globo en la ventana y que zonas tapan los controles. Se
+     mide aqui, al abrir o cerrar la tarjeta y al cambiar la ventana, y no en
+     cada fotograma: leer posiciones de la pagina mientras se escriben
+     transformadas obliga al navegador a recalcularlo todo. */
+  const pantalla = { cx: 0, cy: 0, dx: 0, dy: 0, reservado: [] };
+
+  function medirPantalla(dx = pantalla.dx, dy = pantalla.dy) {
+    pantalla.cx = escena.offsetLeft + sistema.offsetLeft + tam / 2;
+    pantalla.cy = escena.offsetTop + sistema.offsetTop + tam / 2;
+    pantalla.dx = dx;
+    pantalla.dy = dy;
+    const tapan = [...document.querySelectorAll(".rotulo, .controles")]
+      .filter((el) => el.offsetWidth)
+      .map((el) => el.getBoundingClientRect());
+    /* El medidor va dentro de la escena, que puede estar a mitad de su
+       deslizamiento: su caja se calcula en su sitio final. Con tarjeta no
+       cuenta, porque se oculta. */
+    const medidor = document.querySelector(".medidor");
+    if (!document.body.classList.contains("con-tarjeta")) {
+      const left = escena.offsetLeft + medidor.offsetLeft + dx;
+      const top = escena.offsetTop + medidor.offsetTop + dy;
+      tapan.push({ left, top, right: left + medidor.offsetWidth, bottom: top + medidor.offsetHeight });
+    }
+    pantalla.reservado = tapan.map((r) => ({ left: r.left - 6, right: r.right + 6, top: r.top - 4, bottom: r.bottom + 4 }));
   }
 
   tarjeta.cerrar.addEventListener("click", cerrarTarjeta);
 
   /* ------------------------------------------------------------- lugares --- */
-
-  const etiquetaDe = (l) => (l.zona === "País" ? l.nombre : l.nombre + ", " + l.zona);
 
   function irALugar(lugar, paso = null) {
     dejarModo();
@@ -683,7 +794,7 @@
     destino.el.lastChild.textContent = lugar.nombre;
     destino.ancho = null;
 
-    volarA(lugar.lat, lugar.lon, lugar.zoom ?? (lugar.zona === "País" ? 1.05 : 1.25));
+    volarA(lugar.lat, lugar.lon, lugar.zoom ?? 1.25);
     mostrarTarjeta({
       etiqueta: paso ? "Recorrido · " + (paso.i + 1) + " de " + paso.n : lugar.zona,
       titulo: lugar.nombre,
@@ -708,32 +819,114 @@
     return { lat, lon };
   }
 
-  function buscar(texto) {
+  /* ------------------------------------------------------------ buscador --- */
+
+  /* Indice de busqueda: cada lugar con su nombre ya simplificado y un peso.
+     A igual coincidencia gana lo mas relevante: lo escrito a mano, luego los
+     paises, los estados y las ciudades segun su poblacion. */
+  const indice = [];
+
+  function indexar(lugar, peso) {
+    const clave = simplificar(lugar.nombre);
+    const alias = (lugar.alias || []).map(simplificar);
+    indice.push({
+      lugar, peso, clave, alias,
+      palabras: clave.split(" "),
+      todo: [clave, simplificar(lugar.zona || ""), ...alias].join(" "),
+    });
+  }
+  for (const l of LUGARES) indexar(l, 1000);
+
+  /* Nombre exacto, luego empieza igual, luego una de sus palabras empieza
+     igual ("mexico" da "Estado de México") y por ultimo todas las palabras
+     buscadas aparecen en nombre o zona ("cuernavaca morelos"). */
+  function puntuar(e, q, palabras) {
+    if (e.clave === q || e.alias.includes(q)) return 5000 + e.peso;
+    if (e.clave.startsWith(q)) return 4000 + e.peso - e.clave.length;
+    if (e.alias.some((a) => a.startsWith(q))) return 3000 + e.peso;
+    if (e.palabras.some((p) => p.startsWith(q))) return 2000 + e.peso;
+    if (palabras.every((p) => e.todo.includes(p))) return 1000 + e.peso;
+    return 0;
+  }
+
+  function sugerir(texto, cuantas = 8) {
     const q = simplificar(texto);
-    if (!q) return;
-    aviso.textContent = "";
+    if (!q) return [];
+    const palabras = q.split(" ");
+    const hallados = [];
+    for (const e of indice) {
+      const p = puntuar(e, q, palabras);
+      if (p) hallados.push([p, e.lugar]);
+    }
+    hallados.sort((a, b) => b[0] - a[0]);
+    return hallados.slice(0, cuantas).map(([, lugar]) => lugar);
+  }
 
-    const c = leerCoordenadas(texto);
-    const lugar = c
-      ? { nombre: coordenadas(c.lat, c.lon), zona: "Coordenadas", lat: c.lat, lon: c.lon }
-      : LUGARES.find((l) =>
-          simplificar(etiquetaDe(l)) === q || simplificar(l.nombre) === q || l.alias?.includes(q)) ||
-        LUGARES.find((l) => simplificar(l.nombre).startsWith(q)) ||
-        LUGARES.find((l) => simplificar(etiquetaDe(l)).includes(q));
+  /* Lista de sugerencias propia en vez de un datalist: con miles de lugares
+     el del navegador no ignora las tildes ni ordena por relevancia. Sigue el
+     patron combobox de ARIA: el foco se queda en el campo y la opcion activa
+     se anuncia con aria-activedescendant. */
+  let sugeridas = [];
+  let activa = -1;
 
-    if (lugar) {
-      irALugar(lugar);
-      entrada.blur();                 // en el movil, cierra el teclado
+  function mostrarSugerencias() {
+    const texto = entrada.value;
+    sugeridas = texto.trim() && !leerCoordenadas(texto) ? sugerir(texto) : [];
+    lista.replaceChildren(...sugeridas.map((l, i) => {
+      const li = document.createElement("li");
+      li.id = "sugerencia-" + i;
+      li.setAttribute("role", "option");
+      li.setAttribute("aria-selected", "false");
+      li.innerHTML = '<span class="sug-nombre"></span><span class="sug-zona"></span>';
+      li.firstChild.textContent = l.nombre;
+      li.lastChild.textContent = l.zona || "";
+      return li;
+    }));
+    lista.hidden = !sugeridas.length;
+    entrada.setAttribute("aria-expanded", String(!lista.hidden));
+    marcarActiva(-1);
+  }
+
+  function cerrarSugerencias() {
+    sugeridas = [];
+    lista.hidden = true;
+    entrada.setAttribute("aria-expanded", "false");
+    marcarActiva(-1);
+  }
+
+  function marcarActiva(i) {
+    activa = i;
+    [...lista.children].forEach((li, j) => li.setAttribute("aria-selected", String(j === i)));
+    if (i < 0) {
+      entrada.removeAttribute("aria-activedescendant");
     } else {
-      aviso.textContent = "No encontré «" + texto.trim() +
-        "». Prueba con una ciudad, un país o unas coordenadas como 19.4, -99.1";
+      entrada.setAttribute("aria-activedescendant", "sugerencia-" + i);
+      lista.children[i].scrollIntoView({ block: "nearest" });
     }
   }
 
-  for (const l of LUGARES) {
-    const o = document.createElement("option");
-    o.value = etiquetaDe(l);
-    opciones.append(o);
+  function elegir(lugar) {
+    entrada.value = lugar.nombre;
+    cerrarSugerencias();
+    aviso.textContent = "";
+    irALugar(lugar);
+    entrada.blur();                   // en el movil, cierra el teclado
+  }
+
+  function buscar(texto) {
+    if (!simplificar(texto)) return;
+    aviso.textContent = "";
+    const c = leerCoordenadas(texto);
+    const lugar = c
+      ? { nombre: coordenadas(c.lat, c.lon), zona: "Coordenadas", lat: c.lat, lon: c.lon, zoom: 2 }
+      : sugerir(texto, 1)[0];
+    if (lugar) {
+      elegir(lugar);
+    } else {
+      cerrarSugerencias();
+      aviso.textContent = "No encontré «" + texto.trim() +
+        "». Prueba con una ciudad, un estado, un país o unas coordenadas como 19.4, -99.1";
+    }
   }
 
   buscador.addEventListener("submit", (e) => {
@@ -741,14 +934,106 @@
     buscar(entrada.value);
   });
 
-  /* Elegir una sugerencia de la lista ya es la busqueda: no hace falta
-     pulsar Intro. Escribir letra a letra no dispara nada. */
-  entrada.addEventListener("input", (e) => {
+  entrada.addEventListener("input", () => {
     aviso.textContent = "";
-    if (e.inputType && e.inputType !== "insertReplacementText") return;
-    const elegida = [...opciones.options].some((o) => o.value === entrada.value);
-    if (elegida) buscar(entrada.value);
+    mostrarSugerencias();
   });
+
+  entrada.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (lista.hidden) mostrarSugerencias();
+      if (!sugeridas.length) return;
+      e.preventDefault();
+      const n = sugeridas.length;
+      const abajo = e.key === "ArrowDown";
+      marcarActiva(activa < 0 ? (abajo ? 0 : n - 1) : (activa + (abajo ? 1 : n - 1)) % n);
+    } else if (e.key === "Enter" && activa >= 0) {
+      e.preventDefault();
+      elegir(sugeridas[activa]);
+    } else if (e.key === "Escape" && !lista.hidden) {
+      e.preventDefault();             // la primera Escape solo cierra la lista
+      cerrarSugerencias();
+    }
+  });
+
+  entrada.addEventListener("blur", cerrarSugerencias);
+  /* Pulsar una opcion no debe quitarle el foco al campo antes del clic. */
+  lista.addEventListener("pointerdown", (e) => e.preventDefault());
+  lista.addEventListener("click", (e) => {
+    const li = e.target.closest("li");
+    if (li) elegir(sugeridas[[...lista.children].indexOf(li)]);
+  });
+
+  /* ----------------------------------------------------------- geografia --- */
+
+  /* Paises, estados y ciudades de Natural Earth. Llegan en su propio archivo
+     y despues de arrancar, para no retrasar el globo: son 180 KB. Si no
+     cargara, el buscador sigue con los lugares escritos a mano. */
+  function incorporar({ paises, estados, ciudades }) {
+    const nombrePais = {};
+    const capitalDe = new Map();      // "MEX|Cuernavaca" -> "Morelos"
+
+    for (const [codigo, nombre, lat, lon, rango, minimo, poblacion, anio,
+                capital, esPais, zoomVuelo, tieneEstados, alias] of paises) {
+      nombrePais[codigo] = nombre;
+      if (capital) capitalDe.set(codigo + "|" + capital, nombre);
+      const partes = [];
+      if (capital) partes.push("Capital: " + capital + ".");
+      if (poblacion > 0) partes.push("Unos " + habitantes(poblacion) + (anio ? " (" + anio + ")" : "") + ".");
+      const lugar = {
+        nombre, zona: esPais ? "País" : "Territorio", lat, lon,
+        zoom: zoomVuelo, alias, texto: partes.join(" "),
+      };
+      indexar(lugar, 900 - rango * 20);
+      etiquetasPais.push({ clase: "pais", nombre, lat, lon, rango, minimo, tieneEstados: !!tieneEstados, lugar, peso: poblacion });
+    }
+
+    for (const [codigo, nombre, lat, lon, rango, tipo, capital, alias, poblacionCapital] of estados) {
+      if (capital && !capitalDe.has(codigo + "|" + capital)) capitalDe.set(codigo + "|" + capital, nombre);
+      const lugar = {
+        nombre, zona: tipo + " · " + (nombrePais[codigo] || ""), lat, lon, zoom: 2.6, alias,
+        texto: capital && capital !== nombre ? "Capital: " + capital + "." : "",
+      };
+      indexar(lugar, 650 - rango * 15);
+      etiquetasEstado.push({ clase: "estado", nombre, lat, lon, rango, lugar, peso: poblacionCapital });
+    }
+
+    /* Lo escrito a mano manda: una ciudad que ya esta en LUGARES no se
+       repite, pero le presta su estado y su poblacion si no tenia texto. */
+    const escritos = LUGARES.map((l) => [simplificar(l.nombre), l]);
+    for (const [codigo, nombre, lat, lon, estado, poblacion, alias] of ciudades) {
+      const pais = nombrePais[codigo] || "";
+      const de = capitalDe.get(codigo + "|" + nombre);
+      const partes = [];
+      if (de) partes.push("Capital de " + de + ".");
+      if (poblacion > 0) partes.push("Unos " + habitantes(poblacion) + " en su área urbana.");
+      const zona = estado ? estado + ", " + pais : pais;
+      const texto = partes.join(" ");
+
+      const clave = simplificar(nombre);
+      const escrito = escritos.find(([c, l]) => c === clave && distancia(l.lat, l.lon, lat, lon) < 1.5);
+      if (escrito) {
+        const l = escrito[1];
+        if (!l.texto) Object.assign(l, { zona, texto });
+        continue;
+      }
+      indexar({ nombre, zona, lat, lon, zoom: 2.5, alias, texto }, 200 + 40 * Math.log10(Math.max(poblacion, 10)));
+    }
+
+    /* A igual rango, primero el mas poblado: Jalisco, con Guadalajara, antes
+       que Nayarit. De los estados solo se sabe la poblacion de su capital. */
+    const importancia = (a, b) => a.rango - b.rango || b.peso - a.peso;
+    etiquetasPais.sort(importancia);
+    etiquetasEstado.sort(importancia);
+    ordenLejos = [sol, destino, ...etiquetasPais, ...marcas, ...etiquetasEstado];
+    ordenCerca = [sol, destino, ...marcas, ...etiquetasPais, ...etiquetasEstado];
+    pintar();
+  }
+
+  const guion = document.createElement("script");
+  guion.src = "geografia.js";
+  guion.onload = () => { if (window.GEOGRAFIA) incorporar(window.GEOGRAFIA); };
+  document.head.append(guion);
 
   /* ----------------------------------------------------------- recorrido --- */
 
@@ -939,10 +1224,10 @@
       /* Sobre un marcador tambien se puede arrastrar: en el movil las
          etiquetas ocupan mucho globo. Solo si se suelta sin moverse cuenta
          como pulsar el marcador. */
-      const el = e.target.closest(".marca");
+      const marca = marcaDe.get(e.target.closest(".marca"));
       gesto = {
         x: e.clientX, y: e.clientY, movido: false,
-        marca: marcas.find((m) => m.el === el) ?? null,
+        marca: marca?.lugar && marca !== destino ? marca : null,
       };
       sistema.classList.add("agarrado");
     } else if (punteros.size === 2) {
@@ -1070,8 +1355,8 @@
       case "ArrowRight": giro += paso; break;
       case "ArrowUp": inclina = Math.min(TOPE, inclina + paso); break;
       case "ArrowDown": inclina = Math.max(-TOPE, inclina - paso); break;
-      case "+": case "=": e.preventDefault(); acercar(1.15); return;
-      case "-": case "_": e.preventDefault(); acercar(1 / 1.15); return;
+      case "+": case "=": e.preventDefault(); acercar(1.25); return;
+      case "-": case "_": e.preventDefault(); acercar(1 / 1.25); return;
       case "Home": e.preventDefault(); irAlInicio(); return;
       default: return;
     }
@@ -1123,6 +1408,7 @@
     encajar();
     pintar();
   });
+  document.fonts?.ready.then(() => medirPantalla());
 
   /* La superficie aparece de una vez cuando sus texturas estan listas. El
      navegador las pide por el CSS; estas copias solo esperan a que esten
@@ -1136,6 +1422,7 @@
   })).then(() => raiz.classList.remove("cargando"));
 
   actualizarBotones();
+  medirPantalla();
   pintar();
   if (autoGiro) relojAuto = setTimeout(despertar, 1600);
 })();

@@ -41,10 +41,11 @@
     <div class="controles">
       <form class="buscador" id="buscador" role="search" autocomplete="off">
         <label class="oculto" for="buscar">Buscar un lugar</label>
-        <input id="buscar" type="search" list="lugares" placeholder="Busca un lugar"
-               title="Ciudad, país o coordenadas como 19.4, -99.1"
+        <input id="buscar" type="search" placeholder="Busca un lugar"
+               title="Ciudad, estado, país o coordenadas como 19.4, -99.1"
+               role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="sugerencias"
                enterkeyhint="go" spellcheck="false">
-        <datalist id="lugares"></datalist>
+        <ul class="sugerencias" id="sugerencias" role="listbox" aria-label="Sugerencias" hidden></ul>
         <button class="ir" type="submit" aria-label="Ir al lugar">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
         </button>
@@ -57,11 +58,11 @@
         <button class="boton" type="button" id="b-ahora" aria-pressed="false"
                 title="Ilumina el globo como est&aacute; ahora mismo">Ahora</button>
         <button class="boton icono" type="button" id="b-giro" aria-pressed="true"
-                aria-label="Giro autom&aacute;tico" title="Giro autom&aacute;tico">
+                aria-label="Girar solo al estar inactivo" title="Girar solo al estar inactivo">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>
         </button>
         <button class="boton icono" type="button" id="b-marcas" aria-pressed="true"
-                aria-label="Marcadores" title="Marcadores">
+                aria-label="Nombres de ciudades, pa&iacute;ses y estados" title="Nombres de ciudades, pa&iacute;ses y estados">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>
         </button>
         <button class="boton icono" type="button" id="b-inicio"
@@ -469,8 +470,8 @@
   <p class="oculto" id="anuncio" aria-live="polite"></p>
 
   <p class="hint">
-    <span class="para-raton">Arrastra para girar &middot; rueda para acercar &middot; doble clic para volver</span>
-    <span class="para-dedo">Arrastra para girar &middot; pellizca para acercar &middot; doble toque para volver</span>
+    <span class="para-raton">Arrastra para girar &middot; rueda para acercar y ver pa&iacute;ses y estados &middot; doble clic para volver</span>
+    <span class="para-dedo">Arrastra para girar &middot; pellizca para ver pa&iacute;ses y estados &middot; doble toque para volver</span>
   </p>
 
   <script src="globo.js"></script>

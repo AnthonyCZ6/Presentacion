@@ -470,6 +470,31 @@ p { margin: 0; }
   padding: 3px 4px;
 }
 
+/* Países y estados: solo el nombre, centrado en su sitio, sin punto. Se
+   distinguen de las ciudades por tamaño y espaciado, como en un atlas. */
+.marca.pais .punto,
+.marca.estado .punto { display: none; }
+
+.marca.pais .nombre,
+.marca.estado .nombre {
+  left: 0;
+  translate: -50% -50%;
+  padding: 2px 4px;
+}
+
+.marca.pais {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+}
+
+.marca.estado {
+  color: rgba(214, 226, 255, 0.78);
+  font-size: 0.5625rem;
+  letter-spacing: 0.14em;
+}
+
 /* Cerca del borde derecho la etiqueta pasa al otro lado del punto. */
 .marca.izquierda .nombre {
   left: auto;
@@ -555,6 +580,13 @@ p { margin: 0; }
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--faint);
+}
+
+/* Con zoom el globo pasa por detrás del rótulo y del medidor: un halo del
+   color del fondo los mantiene legibles sobre las nubes. */
+.rotulo,
+.medidor {
+  text-shadow: 0 0 4px var(--ground), 0 0 10px var(--ground);
 }
 
 .controles {
@@ -650,9 +682,53 @@ p { margin: 0; }
 .buscador input::placeholder { color: var(--faint); }
 .buscador input:hover { border-color: var(--linea-fuerte); }
 
-/* La flecha que Chrome añade a un campo con datalist: las sugerencias salen
-   igual al escribir, y quitaba sitio al texto. */
-.buscador input::-webkit-calendar-picker-indicator { display: none !important; }
+/* Sugerencias del buscador, bajo el campo. Van por encima de los botones:
+   en el móvil la fila de botones queda justo debajo del buscador, y su
+   backdrop-filter la sube de capa. */
+.sugerencias {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 6px);
+  left: 0;
+  width: max(100%, 18rem);
+  max-height: min(22rem, calc(100vh - 90px));
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border: 1px solid var(--linea);
+  border-radius: 14px;
+  background: var(--panel);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--sombra);
+}
+
+.sugerencias li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.sugerencias li:hover,
+.sugerencias li[aria-selected="true"] { background: var(--activo); }
+
+.sug-nombre {
+  font-size: 0.75rem;
+  color: var(--ink);
+}
+
+.sug-zona {
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.sugerencias li[aria-selected="true"] .sug-nombre { color: var(--accent); }
 
 .ir {
   position: absolute;
@@ -674,6 +750,7 @@ p { margin: 0; }
 
 .aviso {
   position: absolute;
+  z-index: 2;
   top: calc(100% + 8px);
   left: 0;
   right: 0;
